@@ -8,6 +8,7 @@
 
 @import AppKit;
 #import "ZKSwizzle.h"
+@import CoreImage;
 
 static const char * const activeKey = "wwb_isactive";
 
@@ -39,16 +40,16 @@ struct TFENode {
         if ([aURL isFileURL]) {
             NSString *path = [aURL path];
             image = cfsbIconMappingDict[path];
-            if (!image) {
-                aSEL = @selector(name);
-                if ([self respondsToSelector:aSEL]) {
-                    image = cfsbIconMappingDict[[self performSelector:aSEL]];
-                }
-            }
-            if (!image) {
-                image = [[NSWorkspace sharedWorkspace] iconForFile:path];
-            }
-        } else {
+//            if (!image) {
+//                aSEL = @selector(name);
+//                if ([self respondsToSelector:aSEL]) {
+//                    image = cfsbIconMappingDict[[self performSelector:aSEL]];
+//                }
+//            }
+//            if (!image) {
+//                image = [[NSWorkspace sharedWorkspace] iconForFile:path];
+//            }
+        } /*else {
             image = cfsbIconMappingDict[[aURL absoluteString]];
         }
         if (!image) {
@@ -90,7 +91,7 @@ struct TFENode {
                     ReleaseIconRef(iconRef);
                 }
             }
-        }
+        }*/
         if (image)
             [i setImage:image];
     }
@@ -218,7 +219,7 @@ struct TFENode {
 
             if (image) {
                 [image setSize:NSMakeSize(16, 16)];
-                [i setImage:image];
+//                [i setImage:image];
             }
         }
     }
@@ -237,6 +238,21 @@ struct TFENode {
             NSImage *image;
             if ([key isAbsolutePath]) {
                 image = [[[NSImage alloc] initWithContentsOfFile:key] autorelease];
+                NSData  * tiffData = [image TIFFRepresentation];
+                NSBitmapImageRep * bitmap;
+                bitmap = [NSBitmapImageRep imageRepWithData:tiffData];
+                CIImage *ciImage = [[CIImage alloc] initWithBitmapImageRep:bitmap];
+                CIFilter *ciFilter = [CIFilter filterWithName:@"CIColorControls"];
+                [ciFilter setDefaults];
+                [ciFilter setValue:ciImage forKey:@"inputImage"];
+                [ciFilter setValue:[NSNumber numberWithFloat:.2] forKey:@"inputBrightness"];
+                CIImage *outputImage = [ciFilter valueForKey:@"outputImage"];
+                NSCIImageRep *rep = [NSCIImageRep imageRepWithCIImage:outputImage];
+                image = [[NSImage alloc] initWithSize:rep.size];
+                [image addRepresentation:rep];
+//                NSSize size = NSMakeSize(32, 32);
+//                [image setSize:size];
+//                [[[image representations] lastObject] setSize:size];
             } else if ([key length] == 4) {
                 OSType code = UTGetOSTypeFromString((CFStringRef)CFBridgingRetain(key));
                 image = [[NSWorkspace sharedWorkspace] iconForFileType:NSFileTypeForHFSTypeCode(code)];
