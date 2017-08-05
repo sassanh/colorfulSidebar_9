@@ -10,6 +10,8 @@
 #import "ZKSwizzle.h"
 @import QuartzCore;
 
+//Note that after cloning you may need to delete the xcuserdata folder inside the xcodeproj in order to get the scheme to appear
+
 static const char * const activeKey = "wwb_isactive";
 
 @interface colorfulSidebar9 : NSObject
@@ -172,7 +174,6 @@ struct TFENode {
 
             if (image) {
                 [image setSize:NSMakeSize(16, 16)];
-//                [i setImage:image];
             }
         }
     }
@@ -193,18 +194,24 @@ struct TFENode {
             NSImage *image;
             if ([key isAbsolutePath]) {
                 image = [[[NSImage alloc] initWithContentsOfFile:key] autorelease];
-                NSData  * tiffData = [image TIFFRepresentation];
-                NSBitmapImageRep * bitmap;
-                bitmap = [NSBitmapImageRep imageRepWithData:tiffData];
-                CIImage *ciImage = [[CIImage alloc] initWithBitmapImageRep:bitmap];
+                
+                //If you are using colored icons instead of the usual black icon templates, comment out the rest
+                NSRect imageRect = NSMakeRect(0, 0, image.size.width, image.size.height);
+                CGImageRef cgImage = [image CGImageForProposedRect:&imageRect context:NULL hints:nil];
+                CIImage *ciImage = [[CIImage alloc] initWithCGImage:cgImage];
                 CIFilter *ciFilter = [CIFilter filterWithName:@"CIColorControls"];
                 [ciFilter setDefaults];
                 [ciFilter setValue:ciImage forKey:@"inputImage"];
-                [ciFilter setValue:[NSNumber numberWithFloat:.2] forKey:@"inputBrightness"];
+                
+                //Below brightness level works for mavericks. You might need to adjust the value to match your OS.
+                [ciFilter setValue:[NSNumber numberWithFloat:.04] forKey:@"inputBrightness"];
                 CIImage *outputImage = [ciFilter valueForKey:@"outputImage"];
                 NSCIImageRep *rep = [NSCIImageRep imageRepWithCIImage:outputImage];
                 image = [[NSImage alloc] initWithSize:rep.size];
+                
+                //No resizing is currently performed. Ensure your icon contains a 32x32 representation
                 [image addRepresentation:rep];
+                [image setTemplate:true];
             } else if ([key length] == 4) {
                 OSType code = UTGetOSTypeFromString((CFStringRef)CFBridgingRetain(key));
                 image = [[NSWorkspace sharedWorkspace] iconForFileType:NSFileTypeForHFSTypeCode(code)];
