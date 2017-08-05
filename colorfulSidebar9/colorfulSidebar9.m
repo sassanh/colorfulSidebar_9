@@ -8,7 +8,9 @@
 
 @import AppKit;
 #import "ZKSwizzle.h"
-@import CoreImage;
+@import QuartzCore;
+
+//Note that after cloning you may need to delete the xcuserdata folder inside the xcodeproj in order to get the scheme to appear
 
 static const char * const activeKey = "wwb_isactive";
 
@@ -40,58 +42,7 @@ struct TFENode {
         if ([aURL isFileURL]) {
             NSString *path = [aURL path];
             image = cfsbIconMappingDict[path];
-//            if (!image) {
-//                aSEL = @selector(name);
-//                if ([self respondsToSelector:aSEL]) {
-//                    image = cfsbIconMappingDict[[self performSelector:aSEL]];
-//                }
-//            }
-//            if (!image) {
-//                image = [[NSWorkspace sharedWorkspace] iconForFile:path];
-//            }
-        } /*else {
-            image = cfsbIconMappingDict[[aURL absoluteString]];
         }
-        if (!image) {
-            aSEL = @selector(name);
-            if ([self respondsToSelector:aSEL]) {
-                NSString* s = [self performSelector:aSEL];
-                image = cfsbIconMappingDict[s];
-                if ([s isEqualToString:@"iCloud Drive"])
-                    image = cfsbIconMappingDict[@"x-applefinder-vnode:iCloud"];
-            }
-        }
-        if (!image) {
-            aSEL = @selector(image);
-            if ([i respondsToSelector:aSEL]) {
-                NSImage *sidebarImage = [i performSelector:aSEL];
-                aSEL = @selector(sourceImage);
-                if ([sidebarImage respondsToSelector:aSEL]) {
-                    sidebarImage = [sidebarImage performSelector:aSEL];
-                }
-                if ([sidebarImage name]) {
-                    image = cfsbIconMappingDict[[sidebarImage name]];
-                }
-                // Tags
-                if (!image) {
-                    if ([[sidebarImage representations] count] == 1) {
-                        image = [i performSelector:@selector(image)];
-                    }
-                }
-            }
-        }
-        if (!image) {
-            Class cls = NSClassFromString(@"FINode");
-            if (cls) {
-                struct TFENode *node = &ZKHookIvar(self, struct TFENode, "_node");
-                id finode = [cls nodeFromNodeRef:node->fNodeRef];
-                if ([finode respondsToSelector:@selector(createAlternativeIconRepresentationWithOptions:)]) {
-                    IconRef iconRef = [finode createAlternativeIconRepresentationWithOptions:nil];
-                    image = [[[NSImage alloc] initWithIconRef:iconRef] autorelease];
-                    ReleaseIconRef(iconRef);
-                }
-            }
-        }*/
         if (image)
             [i setImage:image];
     }
@@ -173,7 +124,11 @@ struct TFENode {
         if (NSClassFromString(@"FI_TImageView"))
             ZKSwizzle(wb_TImageView, FI_TImageView);
     
-        NSLog(@"%@ loaded into %@ on macOS 10.%ld", [self class], [[NSBundle mainBundle] bundleIdentifier], [[NSProcessInfo processInfo] operatingSystemVersion].minorVersion);
+        #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101000
+            NSLog(@"%@ loaded into %@ on macOS 10.%ld", [self class], [[NSBundle mainBundle] bundleIdentifier], [[NSProcessInfo processInfo] operatingSystemVersion].minorVersion);
+        #else
+            NSLog(@"%@ loaded into %@ on OSX <= 10.9", [self class], [[NSBundle mainBundle] bundleIdentifier]);
+        #endif
     }
     
     if ([[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.apple.finder"]) {
@@ -219,7 +174,6 @@ struct TFENode {
 
             if (image) {
                 [image setSize:NSMakeSize(16, 16)];
-//                [i setImage:image];
             }
         }
     }
@@ -227,8 +181,10 @@ struct TFENode {
 
 + (void)setUpIconMappingDict {
     NSString *path = [[NSBundle bundleForClass:self] pathForResource:@"icons" ofType:@"plist"];
-    if ([[NSProcessInfo processInfo] operatingSystemVersion].minorVersion >= 10)
-        path = [[NSBundle bundleForClass:self] pathForResource:@"icons10" ofType:@"plist"];
+    #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101000
+        if ([[NSProcessInfo processInfo] operatingSystemVersion].minorVersion >= 10)
+            path = [[NSBundle bundleForClass:self] pathForResource:@"icons10" ofType:@"plist"];
+    #endif
     NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:path];
     if (!dict) {
         cfsbIconMappingDict = [NSDictionary new];
@@ -238,21 +194,24 @@ struct TFENode {
             NSImage *image;
             if ([key isAbsolutePath]) {
                 image = [[[NSImage alloc] initWithContentsOfFile:key] autorelease];
-                NSData  * tiffData = [image TIFFRepresentation];
-                NSBitmapImageRep * bitmap;
-                bitmap = [NSBitmapImageRep imageRepWithData:tiffData];
-                CIImage *ciImage = [[CIImage alloc] initWithBitmapImageRep:bitmap];
+                
+                //If you are using colored icons instead of the usual black icon templates, comment out the rest
+                NSRect imageRect = NSMakeRect(0, 0, image.size.width, image.size.height);
+                CGImageRef cgImage = [image CGImageForProposedRect:&imageRect context:NULL hints:nil];
+                CIImage *ciImage = [[CIImage alloc] initWithCGImage:cgImage];
                 CIFilter *ciFilter = [CIFilter filterWithName:@"CIColorControls"];
                 [ciFilter setDefaults];
                 [ciFilter setValue:ciImage forKey:@"inputImage"];
-                [ciFilter setValue:[NSNumber numberWithFloat:.2] forKey:@"inputBrightness"];
+                
+                //Below brightness level works for mavericks. You might need to adjust the value to match your OS.
+                [ciFilter setValue:[NSNumber numberWithFloat:.04] forKey:@"inputBrightness"];
                 CIImage *outputImage = [ciFilter valueForKey:@"outputImage"];
                 NSCIImageRep *rep = [NSCIImageRep imageRepWithCIImage:outputImage];
                 image = [[NSImage alloc] initWithSize:rep.size];
+                
+                //No resizing is currently performed. Ensure your icon contains a 32x32 representation
                 [image addRepresentation:rep];
-//                NSSize size = NSMakeSize(32, 32);
-//                [image setSize:size];
-//                [[[image representations] lastObject] setSize:size];
+                [image setTemplate:true];
             } else if ([key length] == 4) {
                 OSType code = UTGetOSTypeFromString((CFStringRef)CFBridgingRetain(key));
                 image = [[NSWorkspace sharedWorkspace] iconForFileType:NSFileTypeForHFSTypeCode(code)];
