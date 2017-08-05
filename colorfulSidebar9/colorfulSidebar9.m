@@ -8,7 +8,7 @@
 
 @import AppKit;
 #import "ZKSwizzle.h"
-@import CoreImage;
+@import QuartzCore;
 
 static const char * const activeKey = "wwb_isactive";
 
@@ -40,58 +40,7 @@ struct TFENode {
         if ([aURL isFileURL]) {
             NSString *path = [aURL path];
             image = cfsbIconMappingDict[path];
-//            if (!image) {
-//                aSEL = @selector(name);
-//                if ([self respondsToSelector:aSEL]) {
-//                    image = cfsbIconMappingDict[[self performSelector:aSEL]];
-//                }
-//            }
-//            if (!image) {
-//                image = [[NSWorkspace sharedWorkspace] iconForFile:path];
-//            }
-        } /*else {
-            image = cfsbIconMappingDict[[aURL absoluteString]];
         }
-        if (!image) {
-            aSEL = @selector(name);
-            if ([self respondsToSelector:aSEL]) {
-                NSString* s = [self performSelector:aSEL];
-                image = cfsbIconMappingDict[s];
-                if ([s isEqualToString:@"iCloud Drive"])
-                    image = cfsbIconMappingDict[@"x-applefinder-vnode:iCloud"];
-            }
-        }
-        if (!image) {
-            aSEL = @selector(image);
-            if ([i respondsToSelector:aSEL]) {
-                NSImage *sidebarImage = [i performSelector:aSEL];
-                aSEL = @selector(sourceImage);
-                if ([sidebarImage respondsToSelector:aSEL]) {
-                    sidebarImage = [sidebarImage performSelector:aSEL];
-                }
-                if ([sidebarImage name]) {
-                    image = cfsbIconMappingDict[[sidebarImage name]];
-                }
-                // Tags
-                if (!image) {
-                    if ([[sidebarImage representations] count] == 1) {
-                        image = [i performSelector:@selector(image)];
-                    }
-                }
-            }
-        }
-        if (!image) {
-            Class cls = NSClassFromString(@"FINode");
-            if (cls) {
-                struct TFENode *node = &ZKHookIvar(self, struct TFENode, "_node");
-                id finode = [cls nodeFromNodeRef:node->fNodeRef];
-                if ([finode respondsToSelector:@selector(createAlternativeIconRepresentationWithOptions:)]) {
-                    IconRef iconRef = [finode createAlternativeIconRepresentationWithOptions:nil];
-                    image = [[[NSImage alloc] initWithIconRef:iconRef] autorelease];
-                    ReleaseIconRef(iconRef);
-                }
-            }
-        }*/
         if (image)
             [i setImage:image];
     }
@@ -173,7 +122,11 @@ struct TFENode {
         if (NSClassFromString(@"FI_TImageView"))
             ZKSwizzle(wb_TImageView, FI_TImageView);
     
-        NSLog(@"%@ loaded into %@ on macOS 10.%ld", [self class], [[NSBundle mainBundle] bundleIdentifier], [[NSProcessInfo processInfo] operatingSystemVersion].minorVersion);
+        #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101000
+            NSLog(@"%@ loaded into %@ on macOS 10.%ld", [self class], [[NSBundle mainBundle] bundleIdentifier], [[NSProcessInfo processInfo] operatingSystemVersion].minorVersion);
+        #else
+            NSLog(@"%@ loaded into %@ on OSX <= 10.9", [self class], [[NSBundle mainBundle] bundleIdentifier]);
+        #endif
     }
     
     if ([[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.apple.finder"]) {
@@ -227,8 +180,10 @@ struct TFENode {
 
 + (void)setUpIconMappingDict {
     NSString *path = [[NSBundle bundleForClass:self] pathForResource:@"icons" ofType:@"plist"];
-    if ([[NSProcessInfo processInfo] operatingSystemVersion].minorVersion >= 10)
-        path = [[NSBundle bundleForClass:self] pathForResource:@"icons10" ofType:@"plist"];
+    #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101000
+        if ([[NSProcessInfo processInfo] operatingSystemVersion].minorVersion >= 10)
+            path = [[NSBundle bundleForClass:self] pathForResource:@"icons10" ofType:@"plist"];
+    #endif
     NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:path];
     if (!dict) {
         cfsbIconMappingDict = [NSDictionary new];
@@ -250,9 +205,6 @@ struct TFENode {
                 NSCIImageRep *rep = [NSCIImageRep imageRepWithCIImage:outputImage];
                 image = [[NSImage alloc] initWithSize:rep.size];
                 [image addRepresentation:rep];
-//                NSSize size = NSMakeSize(32, 32);
-//                [image setSize:size];
-//                [[[image representations] lastObject] setSize:size];
             } else if ([key length] == 4) {
                 OSType code = UTGetOSTypeFromString((CFStringRef)CFBridgingRetain(key));
                 image = [[NSWorkspace sharedWorkspace] iconForFileType:NSFileTypeForHFSTypeCode(code)];
